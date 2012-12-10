@@ -45,12 +45,41 @@ unless have_library 'icui18n' and have_header 'unicode/ucnv.h'
   exit(1)
 end
 
-# Fix underlinking
-have_library 'z' or abort 'libz missing'
-have_library 'icuuc' or abort 'libicuuc missing'
-have_library 'icudata' or abort 'libicudata missing'
+linux_release = `cat /etc/*-release`
+if linux_release && linux_release.include?('Gentoo')
+  # Fix underlinking
+  have_library 'z' or abort 'libz missing'
+  have_library 'icuuc' or abort 'libicuuc missing'
+  have_library 'icudata' or abort 'libicudata missing'
+  magic_lib = 'magic'
+else
+  ##
+  # libmagic dependency
+  #
+  src = File.basename('file-5.08.tar.gz')
+  dir = File.basename(src, '.tar.gz')
 
-unless have_library 'magic' and have_header 'magic.h'
+  Dir.chdir("#{CWD}/src") do
+    FileUtils.rm_rf(dir) if File.exists?(dir)
+
+    sys("tar zxvf #{src}")
+    Dir.chdir(dir) do
+      sys("./configure --prefix=#{CWD}/dst/ --disable-shared --enable-static --with-pic")
+      sys("make -C src install")
+      sys("make -C magic install")
+    end
+  end
+
+  FileUtils.cp "#{CWD}/dst/lib/libmagic.a", "#{CWD}/libmagic_ext.a"
+
+  $INCFLAGS[0,0] = " -I#{CWD}/dst/include "
+  $LDFLAGS << " -L#{CWD} "
+
+  dir_config 'magic'
+  magic_lib = 'magic_ext'
+end
+
+unless have_library magic_lib and have_header 'magic.h'
   STDERR.puts "\n\n"
   STDERR.puts "***************************************************************************************"
   STDERR.puts "********* error compiling and linking libmagic. please report issue on github *********"
